@@ -166,6 +166,7 @@ async fn main_impl() -> Result<(), Box<dyn Error>> {
         tls: TlsConfig {
             trusted_root_certs: String::new(),
             enabled: false, // Set to true and provide certs for production
+            verify_hostname: true,
         },
         keepalive: TcpKeepaliveConfig::default(),
     };

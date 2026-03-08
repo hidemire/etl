@@ -84,6 +84,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         tls: TlsConfig {
             enabled: false,
             trusted_root_certs: String::new(),
+            verify_hostname: true,
         },
         keepalive: None,
     };

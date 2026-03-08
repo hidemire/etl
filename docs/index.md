@@ -57,7 +57,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         name: "mydb".to_string(),
         username: "postgres".to_string(),
         password: Some("password".to_string().into()),
-        tls: TlsConfig { enabled: false, trusted_root_certs: String::new() },
+        tls: TlsConfig { enabled: false, trusted_root_certs: String::new(), verify_hostname: true },
         keepalive: None,
     };
 

@@ -12,7 +12,12 @@ use const_oid::db::{
     rfc8410::ID_ED_25519,
 };
 use futures::FutureExt;
-use rustls::{ClientConfig, pki_types::ServerName};
+use rustls::{
+    CertificateError, ClientConfig, DigitallySignedStruct, RootCertStore, SignatureScheme,
+    client::WebPkiServerVerifier,
+    client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier},
+    pki_types::{CertificateDer, ServerName, UnixTime},
+};
 use std::io;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -173,6 +178,76 @@ where
 
     fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
         self.project_stream().poll_shutdown(cx)
+    }
+}
+
+/// A [`ServerCertVerifier`] that validates the certificate chain against the configured trust
+/// roots but skips hostname verification.
+///
+/// Chain trust, expiry, and signature checks are still enforced; only the server name match is
+/// suppressed. Use this when [`TlsConfig::verify_hostname`] is `false`.
+///
+/// [`TlsConfig::verify_hostname`]: etl_config::shared::TlsConfig::verify_hostname
+#[derive(Debug)]
+pub(crate) struct SkipHostnameVerifier(Arc<dyn ServerCertVerifier>);
+
+impl SkipHostnameVerifier {
+    /// Creates a new [`SkipHostnameVerifier`] backed by the provided root certificate store.
+    pub(crate) fn new(roots: Arc<RootCertStore>) -> Result<Self, rustls::Error> {
+        let inner = WebPkiServerVerifier::builder(roots)
+            .build()
+            .map_err(|e| rustls::Error::General(e.to_string()))?;
+        Ok(Self(inner))
+    }
+}
+
+impl ServerCertVerifier for SkipHostnameVerifier {
+    fn verify_server_cert(
+        &self,
+        end_entity: &CertificateDer<'_>,
+        intermediates: &[CertificateDer<'_>],
+        server_name: &ServerName<'_>,
+        ocsp_response: &[u8],
+        now: UnixTime,
+    ) -> Result<ServerCertVerified, rustls::Error> {
+        // WebPkiServerVerifier checks the chain first, then the name. If we get
+        // NotValidForName the chain was already validated successfully, so we can
+        // safely suppress that specific error.
+        match self
+            .0
+            .verify_server_cert(end_entity, intermediates, server_name, ocsp_response, now)
+        {
+            Ok(verified) => Ok(verified),
+            Err(rustls::Error::InvalidCertificate(CertificateError::NotValidForName)) => {
+                Ok(ServerCertVerified::assertion())
+            }
+            Err(rustls::Error::InvalidCertificate(CertificateError::NotValidForNameContext {
+                ..
+            })) => Ok(ServerCertVerified::assertion()),
+            Err(e) => Err(e),
+        }
+    }
+
+    fn verify_tls12_signature(
+        &self,
+        message: &[u8],
+        cert: &CertificateDer<'_>,
+        dss: &DigitallySignedStruct,
+    ) -> Result<HandshakeSignatureValid, rustls::Error> {
+        self.0.verify_tls12_signature(message, cert, dss)
+    }
+
+    fn verify_tls13_signature(
+        &self,
+        message: &[u8],
+        cert: &CertificateDer<'_>,
+        dss: &DigitallySignedStruct,
+    ) -> Result<HandshakeSignatureValid, rustls::Error> {
+        self.0.verify_tls13_signature(message, cert, dss)
+    }
+
+    fn supported_verify_schemes(&self) -> Vec<SignatureScheme> {
+        self.0.supported_verify_schemes()
     }
 }
 

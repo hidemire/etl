@@ -249,6 +249,8 @@ pub struct TlsConfig {
     pub trusted_root_certs: String,
     /// Whether TLS is enabled for the connection.
     pub enabled: bool,
+    /// Whether to verify the server's hostname against the certificate.
+    pub verify_hostname: bool,
 }
 
 impl TlsConfig {
@@ -257,6 +259,7 @@ impl TlsConfig {
         Self {
             trusted_root_certs: "".to_string(),
             enabled: false,
+            verify_hostname: true,
         }
     }
 }
@@ -310,7 +313,11 @@ impl IntoConnectOptions<SqlxConnectOptions> for PgConnectionConfig {
     /// Creates sqlx connection options without database name.
     fn without_db(&self, options: Option<&PgConnectionOptions>) -> SqlxConnectOptions {
         let ssl_mode = if self.tls.enabled {
-            SqlxSslMode::VerifyFull
+            if self.tls.verify_hostname {
+                SqlxSslMode::VerifyFull
+            } else {
+                SqlxSslMode::VerifyCa
+            }
         } else {
             SqlxSslMode::Prefer
         };
@@ -352,7 +359,11 @@ impl IntoConnectOptions<TokioPgConnectOptions> for PgConnectionConfig {
     /// Creates tokio-postgres connection options without database name.
     fn without_db(&self, options: Option<&PgConnectionOptions>) -> TokioPgConnectOptions {
         let ssl_mode = if self.tls.enabled {
-            TokioPgSslMode::VerifyFull
+            if self.tls.verify_hostname {
+                TokioPgSslMode::VerifyFull
+            } else {
+                TokioPgSslMode::VerifyCa
+            }
         } else {
             TokioPgSslMode::Prefer
         };

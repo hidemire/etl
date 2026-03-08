@@ -312,6 +312,7 @@ async fn start_pipeline(args: RunArgs) -> Result<(), Box<dyn Error>> {
         tls: TlsConfig {
             trusted_root_certs: args.tls_certs,
             enabled: args.tls_enabled,
+            verify_hostname: true,
         },
         keepalive: TcpKeepaliveConfig::default(),
     };

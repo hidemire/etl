@@ -1,5 +1,5 @@
 use crate::error::{ErrorKind, EtlResult};
-use crate::utils::tokio::MakeRustlsConnect;
+use crate::utils::tokio::{MakeRustlsConnect, SkipHostnameVerifier};
 use crate::{bail, etl_error};
 use etl_config::shared::{ETL_REPLICATION_OPTIONS, IntoConnectOptions, PgConnectionConfig};
 use etl_postgres::replication::extract_server_version;
@@ -442,9 +442,19 @@ impl PgReplicationClient {
             }
         };
 
-        let tls_config = ClientConfig::builder()
-            .with_root_certificates(root_store)
-            .with_no_client_auth();
+        let tls_config = if pg_connection_config.tls.verify_hostname {
+            ClientConfig::builder()
+                .with_root_certificates(root_store)
+                .with_no_client_auth()
+        } else {
+            let mut config = ClientConfig::builder()
+                .with_root_certificates(rustls::RootCertStore::empty())
+                .with_no_client_auth();
+            config
+                .dangerous()
+                .set_certificate_verifier(Arc::new(SkipHostnameVerifier::new(Arc::new(root_store))?));
+            config
+        };
 
         let (client, connection) = config.connect(MakeRustlsConnect::new(tls_config)).await?;
 
@@ -504,9 +514,19 @@ impl PgReplicationClient {
             root_store.add(cert)?;
         }
 
-        let tls_config = ClientConfig::builder()
-            .with_root_certificates(root_store)
-            .with_no_client_auth();
+        let tls_config = if self.pg_connection_config.tls.verify_hostname {
+            ClientConfig::builder()
+                .with_root_certificates(root_store)
+                .with_no_client_auth()
+        } else {
+            let mut config = ClientConfig::builder()
+                .with_root_certificates(rustls::RootCertStore::empty())
+                .with_no_client_auth();
+            config
+                .dangerous()
+                .set_certificate_verifier(Arc::new(SkipHostnameVerifier::new(Arc::new(root_store))?));
+            config
+        };
 
         let (client, connection) = config.connect(MakeRustlsConnect::new(tls_config)).await?;
         let connection_updates_rx = spawn_postgres_connection::<MakeRustlsConnect>(connection);

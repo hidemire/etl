@@ -68,6 +68,7 @@ impl TrustedRootCertsCache {
             Ok(TlsConfig {
                 enabled: true,
                 trusted_root_certs,
+                verify_hostname: true,
             })
         } else {
             Ok(TlsConfig::disabled())

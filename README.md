@@ -87,7 +87,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         name: "mydb".into(),
         username: "postgres".into(),
         password: Some("password".into()),
-        tls: TlsConfig { enabled: false, trusted_root_certs: String::new() },
+        tls: TlsConfig { enabled: false, trusted_root_certs: String::new(), verify_hostname: true },
     };
 
     let store = MemoryStore::new();

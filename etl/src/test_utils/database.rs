@@ -71,6 +71,7 @@ fn local_pg_connection_config() -> PgConnectionConfig {
         tls: TlsConfig {
             trusted_root_certs: String::new(),
             enabled: false,
+            verify_hostname: true,
         },
         keepalive: TcpKeepaliveConfig::default(),
     }
