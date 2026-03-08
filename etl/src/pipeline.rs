@@ -350,9 +350,18 @@ where
 
         // Initialize states for newly added tables in the publication
         for table_id in &publication_table_ids {
+            let initial_phase = if self
+                .config
+                .table_sync_copy
+                .should_copy_table(table_id.into_inner())
+            {
+                TableReplicationPhase::Init
+            } else {
+                TableReplicationPhase::Ready
+            };
             if !table_replication_states.contains_key(table_id) {
                 self.store
-                    .update_table_replication_state(*table_id, TableReplicationPhase::Init)
+                    .update_table_replication_state(*table_id, initial_phase)
                     .await?;
             }
         }

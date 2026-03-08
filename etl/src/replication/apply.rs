@@ -1192,35 +1192,42 @@ where
             return Ok(HandleMessageResult::no_event());
         }
 
-        let existing_table_schema = self
-            .schema_store
-            .get_table_schema(&table_id)
-            .await?
-            .ok_or_else(|| {
-                etl_error!(
-                    ErrorKind::MissingTableSchema,
-                    "Table schema not found in cache",
-                    format!("Table schema for table {} not found in cache", table_id)
-                )
-            })?;
+        let existing_table_schema = self.schema_store.get_table_schema(&table_id).await?;
 
         let event = parse_event_from_relation_message(start_lsn, remote_final_lsn, message)?;
 
-        if !existing_table_schema.partial_eq(&event.table_schema) {
-            let error = TableReplicationError::with_solution(
-                table_id,
-                format!("The schema for table {table_id} has changed during streaming"),
-                "ETL doesn't support schema changes at this point in time, rollback the schema"
-                    .into(),
-                RetryPolicy::ManualRetry,
-                etl_error!(
-                    ErrorKind::SourceSchemaError,
-                    "table schema changed during streaming",
-                    format!("table schema for table {table_id} changed during streaming")
-                ),
-            );
+        match existing_table_schema {
+            None => {
+                // No schema in the store yet — this happens when a table was initialised
+                // directly as `Ready` (e.g. `SkipAllTables`) and no table-sync worker ran to
+                // seed the cache.  Store the schema arriving in-band from the relation message
+                // so that subsequent DML handlers can look it up.
+                info!(
+                    table_id = table_id.0,
+                    "seeding table schema from relation message",
+                );
+                self.schema_store
+                    .store_table_schema(event.table_schema.clone())
+                    .await?;
+            }
+            Some(existing) => {
+                if !existing.partial_eq(&event.table_schema) {
+                    let error = TableReplicationError::with_solution(
+                        table_id,
+                        format!("The schema for table {table_id} has changed during streaming"),
+                        "ETL doesn't support schema changes at this point in time, rollback the schema"
+                            .into(),
+                        RetryPolicy::ManualRetry,
+                        etl_error!(
+                            ErrorKind::SourceSchemaError,
+                            "table schema changed during streaming",
+                            format!("table schema for table {table_id} changed during streaming")
+                        ),
+                    );
 
-            return Ok(HandleMessageResult::finish_batch_and_exclude_event(error));
+                    return Ok(HandleMessageResult::finish_batch_and_exclude_event(error));
+                }
+            }
         }
 
         Ok(HandleMessageResult::return_event(Event::Relation(event)))

@@ -326,10 +326,12 @@ fn build_column_schema(column: &protocol::Column) -> EtlResult<ColumnSchema> {
         column.name()?.to_string(),
         convert_type_oid_to_type(column.type_id() as u32),
         column.type_modifier(),
-        // We do not have access to this information, so we default it to `false`.
-        // TODO: figure out how to fill this value correctly or how to handle the missing value
-        //  better.
-        false,
+        // Nullability is not carried in the pgoutput relation message, so default to `true`
+        // (nullable). This avoids panics in `convert_tuple_to_row` when a column that is
+        // genuinely nullable in Postgres sends a NULL value and the schema was seeded purely
+        // from the replication stream rather than from the catalog. The `nullable` field is
+        // excluded from `partial_eq` comparisons for exactly this reason.
+        true,
         // Currently 1 means that the column is part of the primary key.
         column.flags() == 1,
     ))
